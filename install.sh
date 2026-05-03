@@ -8,6 +8,8 @@
 set -euo pipefail
 
 SUPERPOWERS_DIR="${HOME}/.copilot/skills/superpowers-upstream"
+PERSONAL_SKILLS_DIR="${HOME}/.copilot/skills"
+DOTFILES_SKILLS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/skills"
 PROMPTS_DIR="${HOME}/.vscode-server/data/User/prompts"
 
 # Skills to expose as VS Code Copilot Chat slash-commands.
@@ -48,4 +50,54 @@ for skill in "${SKILLS[@]}"; do
   fi
 done
 
-log "Done. ${#SKILLS[@]} skills processed."
+# 3. Sync version-controlled personal skills from the dotfiles repo into
+#    ~/.copilot/skills/ as symlinks so they're discoverable in fresh containers.
+if [[ -d "${DOTFILES_SKILLS_DIR}" ]]; then
+  mkdir -p "${PERSONAL_SKILLS_DIR}"
+  for dir in "${DOTFILES_SKILLS_DIR}"/*/; do
+    [[ -d "${dir}" ]] || continue
+    name="$(basename "${dir}")"
+    target="${PERSONAL_SKILLS_DIR}/${name}"
+    # Replace if already a symlink (refresh), skip if it's a real dir from another source
+    if [[ ! -e "${target}" || -L "${target}" ]]; then
+      ln -sfn "${dir%/}" "${target}"
+      log "  synced personal skill ${name} from dotfiles"
+    fi
+  done
+fi
+
+# 4. Clean up dangling symlinks under ~/.copilot/skills/ (skills removed from
+#    dotfiles repo).
+for link in "${PERSONAL_SKILLS_DIR}"/*; do
+  if [[ -L "${link}" && ! -e "${link}" ]]; then
+    rm -f "${link}"
+    log "  pruned dangling link $(basename "${link}")"
+  fi
+done
+
+# 5. Symlink any PERSONAL skills (every dir under ~/.copilot/skills/ with a
+#    SKILL.md) into the prompts folder. Excludes superpowers-upstream.
+personal_count=0
+if [[ -d "${PERSONAL_SKILLS_DIR}" ]]; then
+  for dir in "${PERSONAL_SKILLS_DIR}"/*/; do
+    [[ -d "${dir}" ]] || continue
+    name="$(basename "${dir}")"
+    [[ "${name}" == "superpowers-upstream" ]] && continue
+    src="${dir}SKILL.md"
+    [[ -f "${src}" ]] || continue
+    dst="${PROMPTS_DIR}/${name}.prompt.md"
+    ln -sfn "${src}" "${dst}"
+    log "  linked personal ${name}"
+    personal_count=$((personal_count + 1))
+  done
+fi
+
+# 6. Prune dangling .prompt.md symlinks (skills removed from disk).
+for link in "${PROMPTS_DIR}"/*.prompt.md; do
+  if [[ -L "${link}" && ! -e "${link}" ]]; then
+    rm -f "${link}"
+    log "  pruned dangling prompt $(basename "${link}")"
+  fi
+done
+
+log "Done. ${#SKILLS[@]} upstream + ${personal_count} personal skills processed."
