@@ -100,4 +100,38 @@ for link in "${PROMPTS_DIR}"/*.prompt.md; do
   fi
 done
 
+# 7. Ensure VS Code Copilot Chat actually scans the prompts folder.
+#    Patches Machine-scope settings.json (only present inside dev containers /
+#    Remote-SSH / WSL remote). Idempotent: only adds keys that are missing.
+MACHINE_SETTINGS="${HOME}/.vscode-server/data/Machine/settings.json"
+if [[ -d "$(dirname "${MACHINE_SETTINGS}")" ]]; then
+  mkdir -p "$(dirname "${MACHINE_SETTINGS}")"
+  [[ -f "${MACHINE_SETTINGS}" ]] || echo '{}' > "${MACHINE_SETTINGS}"
+  PROMPTS_DIR="${PROMPTS_DIR}" python3 - "${MACHINE_SETTINGS}" <<'PY'
+import json, os, sys
+path = sys.argv[1]
+prompts_dir = os.environ["PROMPTS_DIR"]
+raw = open(path).read().strip() or "{}"
+try:
+    data = json.loads(raw, strict=False)
+except json.JSONDecodeError as e:
+    print(f"[dotfiles]   ! cannot parse {path} ({e}); skipping patch")
+    sys.exit(0)
+changed = False
+if data.get("chat.promptFiles") is not True:
+    data["chat.promptFiles"] = True
+    changed = True
+locs = data.get("chat.promptFilesLocations") or {}
+if locs.get(prompts_dir) is not True:
+    locs[prompts_dir] = True
+    data["chat.promptFilesLocations"] = locs
+    changed = True
+if changed:
+    open(path, "w").write(json.dumps(data, indent=2) + "\n")
+    print("[dotfiles]   patched chat.promptFiles* in", path)
+else:
+    print("[dotfiles]   chat.promptFiles* already set")
+PY
+fi
+
 log "Done. ${#SKILLS[@]} upstream + ${personal_count} personal skills processed."

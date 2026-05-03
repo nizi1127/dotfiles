@@ -11,8 +11,16 @@ across every workspace and every dev container — without touching any project'
 1. Clones (or `git pull`s) `obra/superpowers` to `~/.copilot/skills/superpowers-upstream`.
 2. Symlinks selected `SKILL.md` files into `~/.vscode-server/data/User/prompts/<name>.prompt.md`
    so Copilot Chat exposes them as `/<name>` slash commands.
+3. Symlinks personal skills from `~/dotfiles/skills/` into the same prompts folder.
+4. Patches `~/.vscode-server/data/Machine/settings.json` to enable
+   `chat.promptFiles` and register the prompts folder under
+   `chat.promptFilesLocations` (idempotent — only adds missing keys).
 
 Idempotent — safe to run on every container start.
+
+> ⚠️ Step 4 rewrites `Machine/settings.json` as plain JSON. If you hand-edit
+> that file with `//` or `/* */` comments, they will be stripped. Keep
+> comments in the host-scope `User/settings.json` instead.
 
 ## One-time setup
 
@@ -39,6 +47,11 @@ Edit the `SKILLS=( ... )` array in `install.sh`. Re-run to apply.
 
 ## Notes
 
+- After `install.sh` runs in a fresh container, **reload the VS Code window**
+  (Command Palette → `Developer: Reload Window`) so Copilot Chat picks up the
+  newly enabled `chat.promptFiles*` settings and discovers the prompts folder.
+- Invoke prompts in chat via `/<name>` (slash menu, "Prompts" section),
+  `#prompt:<name>` inline, or Command Palette → `Chat: Run Prompt`.
 - `~/.copilot/skills/` is the convention used by Copilot **CLI**; storing the
   upstream clone there keeps it discoverable for both Chat (via symlinks) and
   CLI (if you later install it).
